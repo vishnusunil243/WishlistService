@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 var (
@@ -32,16 +33,16 @@ func NewWishlistService(adapter adapters.AdapterInterface) *WishlistService {
 		Adapter: adapter,
 	}
 }
-func (wishlist *WishlistService) CreateWishlist(ctx context.Context, req *pb.CreateWishlistRequest) (*pb.NoParam, error) {
+func (wishlist *WishlistService) CreateWishlist(ctx context.Context, req *pb.CreateWishlistRequest) (*emptypb.Empty, error) {
 	span := Tracer.StartSpan("create Wishlist grpc")
 	defer span.Finish()
 	err := wishlist.Adapter.CreateWishlist(entities.Wishlist{
 		UserId: uint(req.UserId),
 	})
 	if err != nil {
-		return &pb.NoParam{}, err
+		return &emptypb.Empty{}, err
 	}
-	return &pb.NoParam{}, nil
+	return &emptypb.Empty{}, nil
 }
 func (wishlist *WishlistService) AddToWishlist(ctx context.Context, req *pb.AddToWishlistRequest) (*pb.CreateWishlistRequest, error) {
 	product, err := ProductClient.GetProduct(context.TODO(), &pb.GetProductById{
@@ -53,6 +54,13 @@ func (wishlist *WishlistService) AddToWishlist(ctx context.Context, req *pb.AddT
 	if product.Name == "" {
 		return &pb.CreateWishlistRequest{}, fmt.Errorf("product with the given id is not found")
 	}
+	wishlistItem, err := wishlist.Adapter.GetWishlistItem(int(req.ProductId), int(req.UserId))
+	if err != nil {
+		return &pb.CreateWishlistRequest{}, err
+	}
+	if wishlistItem.ProductId != 0 {
+		return &pb.CreateWishlistRequest{}, fmt.Errorf("item already present in wishlist")
+	}
 	err = wishlist.Adapter.AddToWishlist(entities.WishlistItems{
 		ProductId: uint(req.ProductId),
 	}, int(req.UserId))
@@ -63,6 +71,35 @@ func (wishlist *WishlistService) AddToWishlist(ctx context.Context, req *pb.AddT
 		UserId: req.UserId,
 	}
 	return res, nil
+}
+func (wishlist *WishlistService) RemoveFromWishlist(ctx context.Context, req *pb.AddToWishlistRequest) (*pb.CreateWishlistRequest, error) {
+	item, err := wishlist.Adapter.GetWishlistItem(int(req.ProductId), int(req.UserId))
+	if err != nil {
+		return &pb.CreateWishlistRequest{}, err
+	}
+	if item.ProductId == 0 {
+		return &pb.CreateWishlistRequest{}, fmt.Errorf("product not found in wishlist")
+	}
+	err = wishlist.Adapter.RemoveFromWishlist(int(req.ProductId), int(req.UserId))
+	if err != nil {
+		return &pb.CreateWishlistRequest{}, err
+	}
+	return &pb.CreateWishlistRequest{UserId: req.UserId}, nil
+}
+func (wishlist *WishlistService) GetAllWishlistItems(req *pb.CreateWishlistRequest, srv pb.WishlistService_GetAllWishlistItemsServer) error {
+	wishlistItems, err := wishlist.Adapter.GetAllWishlistItems(int(req.UserId))
+	if err != nil {
+		return err
+	}
+	for _, item := range wishlistItems {
+		res := &pb.GetAllWishlistResponse{
+			ProductId: uint32(item.ProductId),
+		}
+		if err := srv.Send(res); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type HealthChecker struct {
