@@ -1,0 +1,59 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wishlistdb-config
+data:
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: "8129"
+  POSTGRES_DB: wishlists
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: wishlist-database
+spec:
+  selector:
+    matchLabels:
+      app: wishlistdb
+  serviceName: wishlist-service
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: wishlistdb
+    spec:
+      containers:
+      - name: wishlist-database
+        image: postgres:16
+        resources:
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+        envFrom:
+        - configMapRef:
+            name: wishlistdb-config
+        ports:
+        - containerPort: 5432
+          name: db
+        volumeMounts:
+        - name: wishlistdb-data
+          mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+  - metadata:
+      name: wishlistdb-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 100Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wishlist-service
+spec:
+  selector:
+    app: wishlistdb
+  ports:
+  - port: 5432
+    targetPort: 5432

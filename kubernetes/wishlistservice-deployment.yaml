@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wishlist
+spec:
+  selector:
+    matchLabels:
+      app: wishlist
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: wishlist
+    spec:
+      containers:
+      - name: wishlist
+        image: vishnusunil243/wishlistservice:1.0
+        resources:
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        ports:
+        - containerPort: 8085
+        env:
+        - name: DB_KEY
+          value: "host=wishlist-service user=postgres password=8129 dbname=wishlists port=5432 sslmode=disable"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wishlist
+spec:
+  selector:
+    app: wishlist
+  ports:
+  - port: 8085
+    targetPort: 8085
+
+
